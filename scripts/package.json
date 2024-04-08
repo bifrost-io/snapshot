@@ -1,0 +1,16 @@
+{
+	"name": "dot-airdrops",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"start": "node index.js",
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"type": "module",
+	"dependencies": {
+		"@bifrost-finance/api": "^1",
+		"@polkadot/apps-config": "^0.133.1",
+		"bignumber.js": "^9.0.1"
+	}
+}
