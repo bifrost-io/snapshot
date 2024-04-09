@@ -2,18 +2,14 @@ import { ApiPromise, WsProvider } from "@polkadot/api";
 import BigNumber from "bignumber.js";
 import fs from "fs";
 import { options } from "@bifrost-finance/api";
-import { match } from "assert";
 
-const DOT_ID = '{"Token2":"0"}';
 const VDOT_ID = '{"VToken2":"0"}';
-const LP_DOT_VDOT = '{"LPToken":["ASG","8","ASG","9"]}';
-const LP_VDOT_KUSD = '{"LPToken":["KUSD","8","ASG","9"]}';
-const LP_VDOT_VSDOT = '{"LPToken":["ASG","9","ASG","10"]}';
-const BLP_DOT_VDOT = '{"BLP":"0"}';
-const ADDR_LP_DOT_VDOT = 'eCSrvaystgdffuJxPVRct68qJUZs1sFz762d7d37KJvb7Pz';
-const ADDR_LP_VDOT_KUSD = 'eCSrvaystgdffuJxPVSiQp5vXbGHHEbgQQQUaVb2ychB9Vz';
-const ADDR_LP_VDOT_VSDOT = 'eCSrvaystgdffuJxPVS4SfFvaM26m6tAxwDLPvawBAYbnJd';
-const ADDR_BLP_DOT_VDOT = 'eCSrvbA5gGNQr7UjcSJz4jSTTD7Ne167hEVNeZFmiXpQJP7';
+const TOKENS = [
+  { token: '{"LPToken":["ASG","8","ASG","9"]}', addr: 'eCSrvaystgdffuJxPVRct68qJUZs1sFz762d7d37KJvb7Pz', name: 'lp_dot_vdot' },
+  { token: '{"LPToken":["KUSD","8","ASG","9"]}', addr: 'eCSrvaystgdffuJxPVSiQp5vXbGHHEbgQQQUaVb2ychB9Vz', name: 'lp_vdot_kusd' },
+  { token: '{"LPToken":["ASG","9","ASG","10"]}', addr: 'eCSrvaystgdffuJxPVS4SfFvaM26m6tAxwDLPvawBAYbnJd', name: 'lp_vdot_vsdot' },
+  { token: '{"BLP":"0"}', addr: 'eCSrvbA5gGNQr7UjcSJz4jSTTD7Ne167hEVNeZFmiXpQJP7', name: 'blp_dot_vdot' },
+]
 
 const rpc = "wss://hk.p.bifrost-rpc.liebi.com/ws";
 const block = parseInt(process.argv[2]);
@@ -48,14 +44,13 @@ async function main() {
 main().catch(console.error).finally(() => process.exit());
 
 async function fetchTokenHolders(apiAt, vdot_holdings) {
-  let lp_dot_vdot = BigNumber((await apiAt.query.tokens.accounts(ADDR_LP_DOT_VDOT, JSON.parse(VDOT_ID))).free);
-  let lp_vdot_kusd = BigNumber((await apiAt.query.tokens.accounts(ADDR_LP_VDOT_KUSD, JSON.parse(VDOT_ID))).free);
-  let blp_dot_vdot = BigNumber((await apiAt.query.tokens.accounts(ADDR_BLP_DOT_VDOT, JSON.parse(VDOT_ID))).free);
-  let lp_vdot_vsdot = BigNumber((await apiAt.query.tokens.accounts(ADDR_LP_VDOT_VSDOT, JSON.parse(VDOT_ID))).free);
-  let per_lp_dot_vdot = lp_dot_vdot.dividedBy(await apiAt.query.tokens.totalIssuance(JSON.parse(LP_DOT_VDOT)));
-  let per_blp_dot_vdot = blp_dot_vdot.dividedBy(await apiAt.query.tokens.totalIssuance(JSON.parse(BLP_DOT_VDOT)));
-  let per_lp_vdot_kusd = lp_vdot_kusd.dividedBy(await apiAt.query.tokens.totalIssuance(JSON.parse(LP_VDOT_KUSD)));
-  let per_lp_vdot_vsdot = lp_vdot_vsdot.dividedBy(await apiAt.query.tokens.totalIssuance(JSON.parse(LP_VDOT_VSDOT)));
+  let new_tokens = TOKENS;
+  for (let i = 0; i < TOKENS.length; i++) {
+    let token = TOKENS[i];
+    let free = BigNumber((await apiAt.query.tokens.accounts(token.addr, JSON.parse(VDOT_ID))).free);
+    let per_share = free.dividedBy(await apiAt.query.tokens.totalIssuance(JSON.parse(token.token)));
+    new_tokens[i].per_share = per_share;
+  }
 
   const tokensAccount = await apiAt.query.tokens.accounts.entries();
   const result = tokensAccount.map((item) => {
@@ -64,6 +59,7 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
     const free = BigNumber(item[1].free).toString();
     const reserved = BigNumber(item[1].reserved).toString();
     const frozen = BigNumber(item[1].frozen).toString();
+
     if (token === VDOT_ID) {
       const index = vdot_holdings.findIndex(
         (item) => item.account === account
@@ -72,61 +68,22 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
         vdot_holdings[index].free = free;
         vdot_holdings[index].reserved = reserved;
         vdot_holdings[index].frozen = frozen;
+        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(free).toFixed(0);
       } else {
         const newItem = createDefaultData();
         newItem.account = account;
         newItem.free = free;
         newItem.reserved = reserved;
         newItem.frozen = frozen;
+        newItem.total_vdot = free;
         vdot_holdings.push(newItem);
       }
-    } else if (token === LP_DOT_VDOT) {
-      const index = vdot_holdings.findIndex(
-        (item) => item.account === account
-      );
-      if (index !== -1) {
-        vdot_holdings[index].lp_dot_vdot = per_lp_dot_vdot.multipliedBy(free).toFixed(0);
-      } else {
-        const newItem = createDefaultData();
-        newItem.account = account;
-        newItem.lp_dot_vdot = per_lp_dot_vdot.multipliedBy(free).toFixed(0);
-        vdot_holdings.push(newItem);
-      }
-    } else if (token === LP_VDOT_KUSD) {
-      const index = vdot_holdings.findIndex(
-        (item) => item.account === account
-      );
-      if (index !== -1) {
-        vdot_holdings[index].lp_vdot_kusd = per_lp_vdot_kusd.multipliedBy(free).toFixed(0);
-      } else {
-        const newItem = createDefaultData();
-        newItem.account = account;
-        newItem.lp_vdot_kusd = per_lp_vdot_kusd.multipliedBy(free).toFixed(0);
-        vdot_holdings.push(newItem);
-      }
-    } else if (token === LP_VDOT_VSDOT) {
-      const index = vdot_holdings.findIndex(
-        (item) => item.account === account
-      );
-      if (index !== -1) {
-        vdot_holdings[index].lp_vdot_vsdot = per_lp_vdot_vsdot.multipliedBy(free).toFixed(0);
-      } else {
-        const newItem = createDefaultData();
-        newItem.account = account;
-        newItem.lp_vdot_vsdot = per_lp_vdot_vsdot.multipliedBy(free).toFixed(0);
-        vdot_holdings.push(newItem);
-      }
-    } else if (token === BLP_DOT_VDOT) {
-      const index = vdot_holdings.findIndex(
-        (item) => item.account === account
-      );
-      if (index !== -1) {
-        vdot_holdings[index].blp_dot_vdot = per_blp_dot_vdot.multipliedBy(free).toFixed(0);
-      } else {
-        const newItem = createDefaultData();
-        newItem.account = account;
-        newItem.blp_dot_vdot = per_blp_dot_vdot.multipliedBy(free).toFixed(0);
-        vdot_holdings.push(newItem);
+    } else {
+      let new_token = new_tokens.find((item) => item.token === token);
+      if (new_token) {
+        const index = getIndexByAccount(vdot_holdings, account);
+        vdot_holdings[index][new_token.name] = new_token.per_share.multipliedBy(free).toFixed(0);
+        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index][new_token.name]).toFixed(0);
       }
     }
     return {
@@ -165,31 +122,23 @@ async function fetchFarming(apiAt, vdot_holdings) {
     const intValue = parseInt(value.share.replace(/,/g, ''), 10);
     const share = intValue;
 
-    const init_index = vdot_holdings.findIndex(
-      (item) => item.account === account
-    );
-    // Add new account if not exist
-    if (init_index === -1) {
-      const newItem = createDefaultData();
-      newItem.account = account;
-      vdot_holdings.push(newItem);
-    }
-    const index = vdot_holdings.findIndex(
-      (item) => item.account === account
-    );
-
+    const index = getIndexByAccount(vdot_holdings, account);
     switch (pool_id) {
       case '0':
         vdot_holdings[index].pool0 = per_share_in_pool0.multipliedBy(share).toFixed(0);
+        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool0).toFixed(0);
         break;
       case '4':
         vdot_holdings[index].pool4 = per_share_in_pool4.multipliedBy(share).toFixed(0);
+        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool4).toFixed(0);
         break;
       case '8':
         vdot_holdings[index].pool8 = per_share_in_pool8.multipliedBy(share).toFixed(0);
+        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool8).toFixed(0);
         break;
       case '12':
         vdot_holdings[index].pool12 = per_share_in_pool12.multipliedBy(share).toFixed(0);
+        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool12).toFixed(0);
         break;
       default:
         break;
@@ -217,10 +166,24 @@ function createDefaultData() {
     lp_vdot_vsdot: '0',
     blp_dot_vdot: '0',
     pool0: '0',
-    pool1: '0',
     pool4: '0',
     pool8: '0',
     pool12: '0',
     total_vdot: '0',
   };
+}
+
+export function getIndexByAccount(vdot_holdings, account) {
+  const index = vdot_holdings.findIndex(
+    (item) => item.account === account
+  );
+  // Add new account if not exist
+  if (index === -1) {
+    const newItem = createDefaultData();
+    newItem.account = account;
+    vdot_holdings.push(newItem);
+  }
+  return vdot_holdings.findIndex(
+    (item) => item.account === account
+  );
 }
