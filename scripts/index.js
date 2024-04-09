@@ -3,6 +3,7 @@ import BigNumber from "bignumber.js";
 import fs from "fs";
 import { options } from "@bifrost-finance/api";
 
+const DOT_ID = '{"Token2":"0"}';
 const VDOT_ID = '{"VToken2":"0"}';
 const TOKENS = [
   { token: '{"LPToken":["ASG","8","ASG","9"]}', addr: 'eCSrvaystgdffuJxPVRct68qJUZs1sFz762d7d37KJvb7Pz', name: 'lp_dot_vdot' },
@@ -10,7 +11,12 @@ const TOKENS = [
   { token: '{"LPToken":["ASG","9","ASG","10"]}', addr: 'eCSrvaystgdffuJxPVS4SfFvaM26m6tAxwDLPvawBAYbnJd', name: 'lp_vdot_vsdot' },
   { token: '{"BLP":"0"}', addr: 'eCSrvbA5gGNQr7UjcSJz4jSTTD7Ne167hEVNeZFmiXpQJP7', name: 'blp_dot_vdot' },
 ]
-
+const POOLS = [
+  { pool_id: '0', name: 'pool0', field_name: 'free', addr: 'eCSrvbA5gGLejANY2XNJzg7B8cB4mBx8Rbw4tXHpY6GK5YE' },
+  { pool_id: '4', name: 'pool4', field_name: 'lp_vdot_vsdot', addr: 'eCSrvbA5gGLejANY2YTH6rTd7JxtybT57MyGfGdfqbBPVdZ' },
+  { pool_id: '8', name: 'pool8', field_name: 'blp_dot_vdot', addr: 'eCSrvbA5gGLejANY2ZYFD2p561kjBzx1o81US1yX966U1k4' },
+  { pool_id: '12', name: 'pool12', field_name: 'lp_vdot_kusd', addr: 'eCSrvbA5gGLejANY2adDKDAX4iYZQQSxUt3gCmKNSb1YWp4' },
+]
 const rpc = "wss://hk.p.bifrost-rpc.liebi.com/ws";
 const block = parseInt(process.argv[2]);
 
@@ -40,6 +46,9 @@ async function main() {
   await fetchFarming(apiAt, vdot_holdings);
   console.log("writing vdot-holders.json");
   fs.writeFileSync("data/vdot-holders.json", JSON.stringify(vdot_holdings, 2, 2));
+  console.log("writing vdot-price.json");
+  let price = await fetchPrice(apiAt);
+  fs.writeFileSync("data/vdot-price.json", JSON.stringify(price, 2, 2));
 }
 main().catch(console.error).finally(() => process.exit());
 
@@ -100,19 +109,14 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
 }
 
 async function fetchFarming(apiAt, vdot_holdings) {
-  let vdot_pool0 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(0)));
-  let pool4 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(4)));
-  let pool8 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(8)));
-  let pool12 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(12)));
-
-  let per_share_in_pool0 = BigNumber(vdot_holdings.find((item) => item.account === vdot_pool0.keeper).free)
-    .dividedBy(vdot_pool0.totalShares);
-  let per_share_in_pool4 = BigNumber(vdot_holdings.find((item) => item.account === pool4.keeper).lp_vdot_vsdot)
-    .dividedBy(pool4.totalShares);
-  let per_share_in_pool8 = BigNumber(vdot_holdings.find((item) => item.account === pool8.keeper).blp_dot_vdot)
-    .dividedBy(pool8.totalShares);
-  let per_share_in_pool12 = BigNumber(vdot_holdings.find((item) => item.account === pool12.keeper).lp_vdot_kusd)
-    .dividedBy(pool12.totalShares);
+  let new_pools = POOLS;
+  for (let i = 0; i < POOLS.length; i++) {
+    let pool = POOLS[i];
+    let poolInfo = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(pool.pool_id)));
+    let per_share = BigNumber(vdot_holdings.find((item) => item.account === poolInfo.keeper)[pool.field_name])
+      .dividedBy(poolInfo.totalShares);
+    new_pools[i].per_share = per_share;
+  }
 
   const farming = await apiAt.query.farming.sharesAndWithdrawnRewards.entries();
   const result = farming.map((item) => {
@@ -122,26 +126,11 @@ async function fetchFarming(apiAt, vdot_holdings) {
     const intValue = parseInt(value.share.replace(/,/g, ''), 10);
     const share = intValue;
 
-    const index = getIndexByAccount(vdot_holdings, account);
-    switch (pool_id) {
-      case '0':
-        vdot_holdings[index].pool0 = per_share_in_pool0.multipliedBy(share).toFixed(0);
-        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool0).toFixed(0);
-        break;
-      case '4':
-        vdot_holdings[index].pool4 = per_share_in_pool4.multipliedBy(share).toFixed(0);
-        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool4).toFixed(0);
-        break;
-      case '8':
-        vdot_holdings[index].pool8 = per_share_in_pool8.multipliedBy(share).toFixed(0);
-        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool8).toFixed(0);
-        break;
-      case '12':
-        vdot_holdings[index].pool12 = per_share_in_pool12.multipliedBy(share).toFixed(0);
-        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index].pool12).toFixed(0);
-        break;
-      default:
-        break;
+    let pool = new_pools.find((item) => item.pool_id === pool_id);
+    if (pool) {
+      const index = getIndexByAccount(vdot_holdings, account);
+      vdot_holdings[index][pool.name] = pool.per_share.multipliedBy(share).toFixed(0);
+      vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index][pool.name]).toFixed(0);
     }
 
     return {
@@ -153,6 +142,14 @@ async function fetchFarming(apiAt, vdot_holdings) {
   });
   console.log("writing farming.json");
   fs.writeFileSync("data/farming.json", JSON.stringify(result, 2, 2));
+}
+
+async function fetchPrice(apiAt) {
+  let vdot_total_issuance = await apiAt.query.tokens.totalIssuance(JSON.parse(VDOT_ID))
+  let token_pool = await apiAt.query.vtokenMinting.tokenPool(JSON.parse(DOT_ID));
+  return {
+    vdot_price: BigNumber(token_pool).dividedBy(vdot_total_issuance).toFixed(12),
+  };
 }
 
 function createDefaultData() {
