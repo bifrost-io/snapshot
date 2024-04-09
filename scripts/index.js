@@ -19,6 +19,7 @@ const POOLS = [
 ]
 const rpc = "wss://hk.p.bifrost-rpc.liebi.com/ws";
 const block = parseInt(process.argv[2]);
+const dir = process.argv[3] ? process.argv[3] : "data/vdot-holders.json";
 
 async function main() {
   if (Number.isInteger(block) && block > 0) {
@@ -44,11 +45,14 @@ async function main() {
   let vdot_holdings = [];
   await fetchTokenHolders(apiAt, vdot_holdings);
   await fetchFarming(apiAt, vdot_holdings);
-  console.log("writing vdot-holders.json");
-  fs.writeFileSync("data/vdot-holders.json", JSON.stringify(vdot_holdings, 2, 2));
   console.log("writing vdot-price.json");
   let price = await fetchPrice(apiAt);
   fs.writeFileSync("data/vdot-price.json", JSON.stringify(price, 2, 2));
+  console.log("writing system-account.json");
+  let system_account = await removeSystemAccount(vdot_holdings);
+  fs.writeFileSync("data/system-account.json", JSON.stringify(system_account, 2, 2));
+  console.log(`writing ${dir}`);
+  fs.writeFileSync(dir, JSON.stringify(vdot_holdings, 2, 2));
 }
 main().catch(console.error).finally(() => process.exit());
 
@@ -150,6 +154,29 @@ async function fetchPrice(apiAt) {
   return {
     vdot_price: BigNumber(token_pool).dividedBy(vdot_total_issuance).toFixed(12),
   };
+}
+
+function removeSystemAccount(vdot_holdings) {
+  let result = [];
+  TOKENS.forEach((token) => {
+    const index = vdot_holdings.findIndex(
+      (item) => item.account === token.addr
+    );
+    if (index !== -1) {
+      result.push(vdot_holdings[index])
+      vdot_holdings.splice(index, 1);
+    }
+  });
+  POOLS.forEach((pool) => {
+    const index = vdot_holdings.findIndex(
+      (item) => item.account === pool.addr
+    );
+    if (index !== -1) {
+      result.push(vdot_holdings[index])
+      vdot_holdings.splice(index, 1);
+    }
+  });
+  return result;
 }
 
 function createDefaultData() {
