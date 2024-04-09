@@ -2,6 +2,7 @@ import { ApiPromise, WsProvider } from "@polkadot/api";
 import BigNumber from "bignumber.js";
 import fs from "fs";
 import { options } from "@bifrost-finance/api";
+import { match } from "assert";
 
 const DOT_ID = '{"Token2":"0"}';
 const VDOT_ID = '{"VToken2":"0"}';
@@ -40,7 +41,7 @@ async function main() {
   );
   let vdot_holdings = [];
   await fetchTokenHolders(apiAt, vdot_holdings);
-  await fetchFarming(apiAt);
+  await fetchFarming(apiAt, vdot_holdings);
   console.log("writing vdot-holders.json");
   fs.writeFileSync("data/vdot-holders.json", JSON.stringify(vdot_holdings, 2, 2));
 }
@@ -64,7 +65,6 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
     const reserved = BigNumber(item[1].reserved).toString();
     const frozen = BigNumber(item[1].frozen).toString();
     if (token === VDOT_ID) {
-      // console.log("VDOT_ID");
       const index = vdot_holdings.findIndex(
         (item) => item.account === account
       );
@@ -81,30 +81,18 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
         vdot_holdings.push(newItem);
       }
     } else if (token === LP_DOT_VDOT) {
-      console.log("LP_DOT_VDOT");
-      console.log(vdot_holdings.findIndex((item) => item.account === account));
-
       const index = vdot_holdings.findIndex(
         (item) => item.account === account
       );
       if (index !== -1) {
-        // vdot_holdings[index].free = free;
-        // vdot_holdings[index].reserved = reserved;
-        // vdot_holdings[index].frozen = frozen;
         vdot_holdings[index].lp_dot_vdot = per_lp_dot_vdot.multipliedBy(free).toFixed(0);
       } else {
         const newItem = createDefaultData();
         newItem.account = account;
-        // newItem.free = free;
-        // newItem.reserved = reserved;
-        // newItem.frozen = frozen;
         newItem.lp_dot_vdot = per_lp_dot_vdot.multipliedBy(free).toFixed(0);
         vdot_holdings.push(newItem);
       }
     } else if (token === LP_VDOT_KUSD) {
-      console.log("LP_VDOT_KUSD");
-      console.log(vdot_holdings.findIndex((item) => item.account === account));
-
       const index = vdot_holdings.findIndex(
         (item) => item.account === account
       );
@@ -117,9 +105,6 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
         vdot_holdings.push(newItem);
       }
     } else if (token === LP_VDOT_VSDOT) {
-      console.log("LP_VDOT_VSDOT");
-      console.log(vdot_holdings.findIndex((item) => item.account === account));
-
       const index = vdot_holdings.findIndex(
         (item) => item.account === account
       );
@@ -132,9 +117,6 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
         vdot_holdings.push(newItem);
       }
     } else if (token === BLP_DOT_VDOT) {
-      console.log("BLP_DOT_VDOT");
-      console.log(vdot_holdings.findIndex((item) => item.account === account));
-
       const index = vdot_holdings.findIndex(
         (item) => item.account === account
       );
@@ -160,7 +142,21 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
   // fs.writeFileSync("data/all-token-holders.json", JSON.stringify(result, 2, 2));
 }
 
-async function fetchFarming(apiAt) {
+async function fetchFarming(apiAt, vdot_holdings) {
+  let vdot_pool0 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(0)));
+  let pool4 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(4)));
+  let pool8 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(8)));
+  let pool12 = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(12)));
+
+  let per_share_in_pool0 = BigNumber(vdot_holdings.find((item) => item.account === vdot_pool0.keeper).free)
+    .dividedBy(vdot_pool0.totalShares);
+  let per_share_in_pool4 = BigNumber(vdot_holdings.find((item) => item.account === pool4.keeper).lp_vdot_vsdot)
+    .dividedBy(pool4.totalShares);
+  let per_share_in_pool8 = BigNumber(vdot_holdings.find((item) => item.account === pool8.keeper).blp_dot_vdot)
+    .dividedBy(pool8.totalShares);
+  let per_share_in_pool12 = BigNumber(vdot_holdings.find((item) => item.account === pool12.keeper).lp_vdot_kusd)
+    .dividedBy(pool12.totalShares);
+
   const farming = await apiAt.query.farming.sharesAndWithdrawnRewards.entries();
   const result = farming.map((item) => {
     let value = JSON.parse(JSON.stringify(item[1].toHuman()));
@@ -168,6 +164,37 @@ async function fetchFarming(apiAt) {
     const account = item[0].toHuman()[1];
     const intValue = parseInt(value.share.replace(/,/g, ''), 10);
     const share = intValue;
+
+    const init_index = vdot_holdings.findIndex(
+      (item) => item.account === account
+    );
+    // Add new account if not exist
+    if (init_index === -1) {
+      const newItem = createDefaultData();
+      newItem.account = account;
+      vdot_holdings.push(newItem);
+    }
+    const index = vdot_holdings.findIndex(
+      (item) => item.account === account
+    );
+
+    switch (pool_id) {
+      case '0':
+        vdot_holdings[index].pool0 = per_share_in_pool0.multipliedBy(share).toFixed(0);
+        break;
+      case '4':
+        vdot_holdings[index].pool4 = per_share_in_pool4.multipliedBy(share).toFixed(0);
+        break;
+      case '8':
+        vdot_holdings[index].pool8 = per_share_in_pool8.multipliedBy(share).toFixed(0);
+        break;
+      case '12':
+        vdot_holdings[index].pool12 = per_share_in_pool12.multipliedBy(share).toFixed(0);
+        break;
+      default:
+        break;
+    }
+
     return {
       key: account + '-' + pool_id,
       account,
@@ -189,5 +216,11 @@ function createDefaultData() {
     lp_vdot_kusd: '0',
     lp_vdot_vsdot: '0',
     blp_dot_vdot: '0',
+    pool0: '0',
+    pool1: '0',
+    pool4: '0',
+    pool8: '0',
+    pool12: '0',
+    total_vdot: '0',
   };
 }
