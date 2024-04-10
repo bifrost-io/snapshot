@@ -3,23 +3,18 @@ import BigNumber from "bignumber.js";
 import fs from "fs";
 import { options } from "@bifrost-finance/api";
 
-const DOT_ID = '{"Token2":"0"}';
-const VDOT_ID = '{"VToken2":"0"}';
+const VSDOT_ID = '{"VSToken2":"0"}';
 const TOKENS = [
-  { token: '{"LPToken":["ASG","8","ASG","9"]}', addr: 'eCSrvaystgdffuJxPVRct68qJUZs1sFz762d7d37KJvb7Pz', name: 'lp_dot_vdot' },
-  { token: '{"LPToken":["KUSD","8","ASG","9"]}', addr: 'eCSrvaystgdffuJxPVSiQp5vXbGHHEbgQQQUaVb2ychB9Vz', name: 'lp_vdot_kusd' },
   { token: '{"LPToken":["ASG","9","ASG","10"]}', addr: 'eCSrvaystgdffuJxPVS4SfFvaM26m6tAxwDLPvawBAYbnJd', name: 'lp_vdot_vsdot' },
-  { token: '{"BLP":"0"}', addr: 'eCSrvbA5gGNQr7UjcSJz4jSTTD7Ne167hEVNeZFmiXpQJP7', name: 'blp_dot_vdot' },
+  { token: '{"BLP":"4"}', addr: 'eCSrvbA5gGNQr7UjcTPxAunuRuuCrQb4NzXaRJbd22jUr4G', name: 'blp_vdot_vsdot' },
 ]
 const POOLS = [
-  { pool_id: '0', name: 'pool0', field_name: 'free', addr: 'eCSrvbA5gGLejANY2XNJzg7B8cB4mBx8Rbw4tXHpY6GK5YE' },
   { pool_id: '4', name: 'pool4', field_name: 'lp_vdot_vsdot', addr: 'eCSrvbA5gGLejANY2YTH6rTd7JxtybT57MyGfGdfqbBPVdZ' },
-  { pool_id: '8', name: 'pool8', field_name: 'blp_dot_vdot', addr: 'eCSrvbA5gGLejANY2ZYFD2p561kjBzx1o81US1yX966U1k4' },
-  { pool_id: '12', name: 'pool12', field_name: 'lp_vdot_kusd', addr: 'eCSrvbA5gGLejANY2adDKDAX4iYZQQSxUt3gCmKNSb1YWp4' },
+  { pool_id: '11', name: 'pool11', field_name: 'blp_vdot_vsdot', addr: 'eCSrvbA5gGLejANY2aMUHfaQa3M6rJaDowY8G5UuciHGq1h' },
 ]
 const rpc = "wss://hk.p.bifrost-rpc.liebi.com/ws";
 const block = parseInt(process.argv[2]);
-const dir = process.argv[3] ? process.argv[3] : "../snapshots/vdot-holders.json";
+const dir = process.argv[3] ? process.argv[3] : "../snapshots/vsdot-holders.json";
 
 async function main() {
   if (Number.isInteger(block) && block > 0) {
@@ -42,24 +37,24 @@ async function main() {
     `connected, head at #${currentBlock}, fetching token holders at #${block || currentBlock
     }...`
   );
-  let vdot_holdings = [];
-  await fetchTokenHolders(apiAt, vdot_holdings);
-  await fetchFarming(apiAt, vdot_holdings);
-  let system_account = await removeSystemAccount(vdot_holdings);
+  let token_holdings = [];
+  await fetchTokenHolders(apiAt, token_holdings);
+  await fetchFarming(apiAt, token_holdings);
+  let system_account = await removeSystemAccount(token_holdings);
   console.log("writing system-account.json");
   fs.writeFileSync("data/system-account.json", JSON.stringify(system_account, 2, 2));
   // Fill in the statistics in the first item.
-  await makeStatistics(apiAt, vdot_holdings, block || currentBlock);
+  await makeStatistics(apiAt, token_holdings, block || currentBlock);
   console.log(`writing ${dir}`);
-  fs.writeFileSync(dir, JSON.stringify(vdot_holdings, 2, 2));
+  fs.writeFileSync(dir, JSON.stringify(token_holdings, 2, 2));
 }
 main().catch(console.error).finally(() => process.exit());
 
-async function fetchTokenHolders(apiAt, vdot_holdings) {
+async function fetchTokenHolders(apiAt, token_holdings) {
   let new_tokens = TOKENS;
   for (let i = 0; i < TOKENS.length; i++) {
     let token = TOKENS[i];
-    let free = BigNumber((await apiAt.query.tokens.accounts(token.addr, JSON.parse(VDOT_ID))).free);
+    let free = BigNumber((await apiAt.query.tokens.accounts(token.addr, JSON.parse(VSDOT_ID))).free);
     let per_share = free.dividedBy(await apiAt.query.tokens.totalIssuance(JSON.parse(token.token)));
     new_tokens[i].per_share = per_share;
   }
@@ -72,30 +67,30 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
     const reserved = BigNumber(item[1].reserved).toString();
     const frozen = BigNumber(item[1].frozen).toString();
 
-    if (token === VDOT_ID) {
-      const index = vdot_holdings.findIndex(
+    if (token === VSDOT_ID) {
+      const index = token_holdings.findIndex(
         (item) => item.account === account
       );
       if (index !== -1) {
-        vdot_holdings[index].free = free;
-        vdot_holdings[index].reserved = reserved;
-        vdot_holdings[index].frozen = frozen;
-        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(free).toFixed(0);
+        token_holdings[index].free = free;
+        token_holdings[index].reserved = reserved;
+        token_holdings[index].frozen = frozen;
+        token_holdings[index].total_token = BigNumber(token_holdings[index].total_token).plus(free).toFixed(0);
       } else {
         const newItem = createDefaultData();
         newItem.account = account;
         newItem.free = free;
         newItem.reserved = reserved;
         newItem.frozen = frozen;
-        newItem.total_vdot = free;
-        vdot_holdings.push(newItem);
+        newItem.total_token = free;
+        token_holdings.push(newItem);
       }
     } else {
       let new_token = new_tokens.find((item) => item.token === token);
       if (new_token) {
-        const index = getIndexByAccount(vdot_holdings, account);
-        vdot_holdings[index][new_token.name] = new_token.per_share.multipliedBy(free).toFixed(0);
-        vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index][new_token.name]).toFixed(0);
+        const index = getIndexByAccount(token_holdings, account);
+        token_holdings[index][new_token.name] = new_token.per_share.multipliedBy(free).toFixed(0);
+        token_holdings[index].total_token = BigNumber(token_holdings[index].total_token).plus(token_holdings[index][new_token.name]).toFixed(0);
       }
     }
     return {
@@ -111,12 +106,12 @@ async function fetchTokenHolders(apiAt, vdot_holdings) {
   // fs.writeFileSync("data/all-token-holders.json", JSON.stringify(result, 2, 2));
 }
 
-async function fetchFarming(apiAt, vdot_holdings) {
+async function fetchFarming(apiAt, token_holdings) {
   let new_pools = POOLS;
   for (let i = 0; i < POOLS.length; i++) {
     let pool = POOLS[i];
     let poolInfo = JSON.parse(JSON.stringify(await apiAt.query.farming.poolInfos(pool.pool_id)));
-    let per_share = BigNumber(vdot_holdings.find((item) => item.account === poolInfo.keeper)[pool.field_name])
+    let per_share = BigNumber(token_holdings.find((item) => item.account === poolInfo.keeper)[pool.field_name])
       .dividedBy(poolInfo.totalShares);
     new_pools[i].per_share = per_share;
   }
@@ -131,9 +126,9 @@ async function fetchFarming(apiAt, vdot_holdings) {
 
     let pool = new_pools.find((item) => item.pool_id === pool_id);
     if (pool) {
-      const index = getIndexByAccount(vdot_holdings, account);
-      vdot_holdings[index][pool.name] = pool.per_share.multipliedBy(share).toFixed(0);
-      vdot_holdings[index].total_vdot = BigNumber(vdot_holdings[index].total_vdot).plus(vdot_holdings[index][pool.name]).toFixed(0);
+      const index = getIndexByAccount(token_holdings, account);
+      token_holdings[index][pool.name] = pool.per_share.multipliedBy(share).toFixed(0);
+      token_holdings[index].total_token = BigNumber(token_holdings[index].total_token).plus(token_holdings[index][pool.name]).toFixed(0);
     }
 
     return {
@@ -147,39 +142,37 @@ async function fetchFarming(apiAt, vdot_holdings) {
   fs.writeFileSync("data/farming.json", JSON.stringify(result, 2, 2));
 }
 
-async function makeStatistics(apiAt, vdot_holdings, block) {
-  let vdot_total_issuance = await apiAt.query.tokens.totalIssuance(JSON.parse(VDOT_ID))
-  let token_pool = await apiAt.query.vtokenMinting.tokenPool(JSON.parse(DOT_ID));
-  let total_vdot = BigNumber(0);
-  vdot_holdings.forEach((item) => {
-    if (item.account) total_vdot = total_vdot.plus(item.total_vdot);
+async function makeStatistics(apiAt, token_holdings, block) {
+  let token_total_issuance = await apiAt.query.tokens.totalIssuance(JSON.parse(VSDOT_ID))
+  let total_token = BigNumber(0);
+  token_holdings.forEach((item) => {
+    if (item.account) total_token = total_token.plus(item.total_token);
   });
-  vdot_holdings.unshift({
+  token_holdings.unshift({
     block_height: block,
-    vdot_to_dot_price: BigNumber(token_pool).dividedBy(vdot_total_issuance).toFixed(12),
-    vdot_total_issuance: vdot_total_issuance.toString(),  // The total number of vdots on chain
-    total_vdot: total_vdot.toFixed(0), // The total number of vdots in this statistics file
+    token_total_issuance: token_total_issuance.toString(),  // The total number of tokens on chain
+    total_token: total_token.toFixed(0), // The total number of tokens in this statistics file
   })
 }
 
-function removeSystemAccount(vdot_holdings) {
+function removeSystemAccount(token_holdings) {
   let result = [];
   TOKENS.forEach((token) => {
-    const index = vdot_holdings.findIndex(
+    const index = token_holdings.findIndex(
       (item) => item.account === token.addr
     );
     if (index !== -1) {
-      result.push(vdot_holdings[index])
-      vdot_holdings.splice(index, 1);
+      result.push(token_holdings[index])
+      token_holdings.splice(index, 1);
     }
   });
   POOLS.forEach((pool) => {
-    const index = vdot_holdings.findIndex(
+    const index = token_holdings.findIndex(
       (item) => item.account === pool.addr
     );
     if (index !== -1) {
-      result.push(vdot_holdings[index])
-      vdot_holdings.splice(index, 1);
+      result.push(token_holdings[index])
+      token_holdings.splice(index, 1);
     }
   });
   return result;
@@ -191,29 +184,25 @@ function createDefaultData() {
     free: '0',
     reserved: '0',
     frozen: '0',
-    lp_dot_vdot: '0',
-    lp_vdot_kusd: '0',
     lp_vdot_vsdot: '0',
-    blp_dot_vdot: '0',
-    pool0: '0',
+    blp_vdot_vsdot: '0',
     pool4: '0',
-    pool8: '0',
-    pool12: '0',
-    total_vdot: '0',
+    pool11: '0',
+    total_token: '0',
   };
 }
 
-export function getIndexByAccount(vdot_holdings, account) {
-  const index = vdot_holdings.findIndex(
+export function getIndexByAccount(token_holdings, account) {
+  const index = token_holdings.findIndex(
     (item) => item.account === account
   );
   // Add new account if not exist
   if (index === -1) {
     const newItem = createDefaultData();
     newItem.account = account;
-    vdot_holdings.push(newItem);
+    token_holdings.push(newItem);
   }
-  return vdot_holdings.findIndex(
+  return token_holdings.findIndex(
     (item) => item.account === account
   );
 }
