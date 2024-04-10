@@ -19,7 +19,7 @@ const POOLS = [
 ]
 const rpc = "wss://hk.p.bifrost-rpc.liebi.com/ws";
 const block = parseInt(process.argv[2]);
-const dir = process.argv[3] ? process.argv[3] : "data/vdot-holders.json";
+const dir = process.argv[3] ? process.argv[3] : "../snapshots/vdot-holders.json";
 
 async function main() {
   if (Number.isInteger(block) && block > 0) {
@@ -45,12 +45,11 @@ async function main() {
   let vdot_holdings = [];
   await fetchTokenHolders(apiAt, vdot_holdings);
   await fetchFarming(apiAt, vdot_holdings);
-  console.log("writing vdot-price.json");
-  let price = await fetchPrice(apiAt);
-  fs.writeFileSync("data/vdot-price.json", JSON.stringify(price, 2, 2));
-  console.log("writing system-account.json");
   let system_account = await removeSystemAccount(vdot_holdings);
+  console.log("writing system-account.json");
   fs.writeFileSync("data/system-account.json", JSON.stringify(system_account, 2, 2));
+  // Fill in the statistics in the first item.
+  await makeStatistics(apiAt, vdot_holdings, block || currentBlock);
   console.log(`writing ${dir}`);
   fs.writeFileSync(dir, JSON.stringify(vdot_holdings, 2, 2));
 }
@@ -148,12 +147,19 @@ async function fetchFarming(apiAt, vdot_holdings) {
   fs.writeFileSync("data/farming.json", JSON.stringify(result, 2, 2));
 }
 
-async function fetchPrice(apiAt) {
+async function makeStatistics(apiAt, vdot_holdings, block) {
   let vdot_total_issuance = await apiAt.query.tokens.totalIssuance(JSON.parse(VDOT_ID))
   let token_pool = await apiAt.query.vtokenMinting.tokenPool(JSON.parse(DOT_ID));
-  return {
+  let total_vdot = BigNumber(0);
+  vdot_holdings.forEach((item) => {
+    if (item.account) total_vdot = total_vdot.plus(item.total_vdot);
+  });
+  vdot_holdings.unshift({
+    block_height: block,
     vdot_price: BigNumber(token_pool).dividedBy(vdot_total_issuance).toFixed(12),
-  };
+    vdot_total_issuance: vdot_total_issuance.toString(),  // The total number of vdots on chain
+    total_vdot: total_vdot.toFixed(0), // The total number of vdots in this statistics file
+  })
 }
 
 function removeSystemAccount(vdot_holdings) {
