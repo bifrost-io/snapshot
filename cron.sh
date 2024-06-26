@@ -6,4 +6,4 @@ node vsdot.js 0 "../snapshots/salp-vsdot-$(date +"%Y-%m-%d").json"
 cd ..
 git add .
 git commit -m "Auto upload $(date +"%Y-%m-%d %T")"
-git push origin main
+git push b main
