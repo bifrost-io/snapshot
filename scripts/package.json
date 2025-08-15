@@ -9,7 +9,7 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"@bifrost-finance/api": "^1",
+		"@polkadot/api": "^15.9.2",
 		"@polkadot/apps-config": "^0.133.1",
 		"bignumber.js": "^9.0.1"
 	}
