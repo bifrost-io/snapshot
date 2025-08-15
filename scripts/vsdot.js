@@ -1,7 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import BigNumber from "bignumber.js";
 import fs from "fs";
-import { options } from "@bifrost-finance/api";
 
 const VSDOT_ID = '{"VSToken2":"0"}';
 const TOKENS = [
@@ -29,7 +28,7 @@ async function main() {
 
   console.log("connecting to " + rpc);
   const wsProvider = new WsProvider(rpc);
-  const api = await ApiPromise.create(options({ provider: wsProvider }));
+  const api = await ApiPromise.create({ provider: wsProvider });
   const currentBlock = (await api.rpc.chain.getBlock()).block.header.number;
   const blockHash = await api.rpc.chain.getBlockHash(block || currentBlock);
   const apiAt = await api.at(blockHash);
